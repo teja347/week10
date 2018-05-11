@@ -1,0 +1,63 @@
+---
+title: "Assignment_10"
+author: "Sai Teja Saggurthi"
+date: "May 05, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(shiny)
+library(choroplethr)
+library(choroplethrMaps)
+library(acs)
+library(tidycensus)
+data("county.map")
+```
+
+Please write a Shiny app with the following features:
+
+* a choice of which state to plot
+* a choice of plotting either median household income (B19013_001), median gross rent (B25064_001), or the ratio of median gross rent to median household income
+
+* a plot of the chosen variable in the chosen state.
+
+```{r}
+ui <- fluidPage(
+  sidebarLayout(
+    sidebarPanel(
+      radioButtons("plotID", "Plot:", choices = c("Median Household Income", "Median Gross Rent","Ratio of Median Gross Rent to Median Household Income"), selected = "Median Household Income"),
+      selectInput("stateID", "State:", choices =state.region, selected = "alaska")
+    ),
+    mainPanel(
+      plotOutput("main_plot")
+    )
+  ),
+  titlePanel("ACS Data Plot")
+)
+```
+
+```{r}
+server <- function(input, output, session) {
+  reduced_df <- reactive({
+    medincome_switch <- switch(input$plotID,
+                               "Median Household Income" = "B19013_001", 
+                               "Median Gross Rent" = "B25064_001", 
+                               "Ratio of Median Gross Rent to Median Household Income" = c("B19013_001", "B25064_001"))
+    if (length(medincome_switch) == 2) {
+      trial_data1 <- get_acs(geography = "county", variables = c(medincome = medincome_switch[1]), state = input$stateID)
+      trial_data2 <- get_acs(geography = "county", variables = c(medincome = medincome_switch[2]), state = input$stateID)
+      trial_data1 %>% inner_join(trial_data2, by = c("GEOID" = "GEOID")) %>% mutate(value = estimate.y/estimate.x) %>% select(GEOID, value) %>% mutate(region = as.integer(GEOID))
+    } else if (length(medincome_switch) == 1) {
+      get_acs(geography = "county", variables = c(medincome = medincome_switch), state = input$stateID) %>% rename(value = estimate) %>% mutate(region = as.integer(GEOID))
+    }
+  })
+  output$main_plot <- renderPlot({
+    reduced_df() %>% county_choropleth(title = paste(input$plotID, "of", input$stateID), num_colors = 1, state_zoom = input$stateID)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
